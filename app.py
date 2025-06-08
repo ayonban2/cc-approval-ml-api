@@ -19,56 +19,57 @@ rf_regressor = joblib.load(os.path.join(model_dir, "rf_regressor.joblib"))
 nn_classifier = load_model(os.path.join(model_dir, "nn_classifier.h5"))
 nn_regressor = load_model(os.path.join(model_dir, "nn_regressor.h5"))
 
-# === Feature order ===
-feature_columns = ['age', 'gender', 'income', 'existing_loans', 'credit_score']
+# === Final Feature Order ===
+feature_columns = ['age', 'gender', 'income', 'occupation', 'existing_loans', 'credit_score']
 
 @app.route('/')
 def home():
-    return "Credit Card Approval API is running."
+    return "✅ Credit Card Approval API is running."
 
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
         data = request.json
+
         # Input validation
         missing = [col for col in feature_columns if col not in data]
         if missing:
             return jsonify({"error": f"Missing fields: {missing}"}), 400
 
-        # Extract features in correct order
+        # Create input array in correct order
         X_input = [data[col] for col in feature_columns]
         X_df = np.array(X_input).reshape(1, -1)
 
-        # Apply label encoding
-        for i, col in enumerate(['gender', 'occupation']):
+        # Encode categorical variables
+        for col in ['gender', 'occupation']:
+            val = data[col]
             encoder = label_encoders[col]
-            X_df[0, feature_columns.index(col)] = encoder.transform([data[col]])[0]
+            if val not in encoder.classes_:
+                return jsonify({"error": f"Invalid value for {col}: '{val}'. Allowed: {encoder.classes_.tolist()}"}), 400
+            X_df[0, feature_columns.index(col)] = encoder.transform([val])[0]
 
-        # Convert to float
+        # Convert all to float
         X_df = X_df.astype(float)
 
         # Scale for NN
         X_scaled = scaler.transform(X_df)
 
-        # Predict approval
+        # Predict approval probability
         nn_prob = nn_classifier.predict(X_scaled)[0][0]
         rf_prob = rf_classifier.predict_proba(X_df)[0][1]
         final_prob = (nn_prob + rf_prob) / 2
         approved = int(final_prob > 0.5)
 
         if approved:
-            # Predict credit limit
             nn_limit = nn_regressor.predict(X_scaled)[0][0]
             rf_limit = rf_regressor.predict(X_df)[0]
             final_limit = (nn_limit + rf_limit) / 2
 
-            # Suggest tiers
             safe = round(final_limit * 0.6, -2)
             optimal = round(final_limit * 0.8, -2)
             stretched = round(final_limit * 1.0, -2)
         else:
-            final_limit = 0
-            safe = optimal = stretched = 0
+            final_limit = safe = optimal = stretched = 0
 
         return jsonify({
             "approved": bool(approved),
