@@ -22,17 +22,25 @@ nn_regressor = load_model(os.path.join(model_dir, "nn_regressor.h5"))
 features = [
     'age',
     'gender',
-    'income',
+    'annual_income',
     'occupation',
-    'existing_loans',
-    'credit_score'
+    'existing_bank_products',
+    'kyc_completed',
+    'relationship_years',
+    'credit_score',
+    'num_accounts',
+    'avg_account_age',
+    'dpd_30_count',
+    'dpd_90_plus',
+    'recent_default',
+    'chronic_defaulter'
 ]
 
 categorical_columns = ['gender', 'occupation']
 
 @app.route('/')
 def home():
-    return "✅ Credit Card Approval API is running with 6 features."
+    return "✅ Credit Card Approval API is running with 14 features."
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -98,4 +106,5 @@ def predict():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
