@@ -19,8 +19,20 @@ rf_regressor = joblib.load(os.path.join(model_dir, "rf_regressor.joblib"))
 nn_classifier = load_model(os.path.join(model_dir, "nn_classifier.h5"))
 nn_regressor = load_model(os.path.join(model_dir, "nn_regressor.h5"))
 
-# === Final Feature Order ===
-feature_columns = ['age', 'gender', 'income', 'occupation', 'existing_loans', 'credit_score']
+# === Feature order used during training ===
+feature_columns = [
+    'age', 'gender', 'income', 'occupation',
+    'existing_loans', 'credit_score', 'marital_status',
+    'education', 'dependents', 'residence_type',
+    'employment_type', 'annual_expenses',
+    'monthly_debt', 'years_at_current_job'
+]
+
+# === Categorical columns to encode ===
+categorical_cols = [
+    'gender', 'occupation', 'marital_status',
+    'education', 'residence_type', 'employment_type'
+]
 
 @app.route('/')
 def home():
@@ -30,41 +42,39 @@ def home():
 def predict():
     try:
         data = request.json
-
-        # Input validation
+        # Check if all required fields are present
         missing = [col for col in feature_columns if col not in data]
         if missing:
             return jsonify({"error": f"Missing fields: {missing}"}), 400
 
-        # Create input array in correct order
+        # Prepare input in correct order
         X_input = [data[col] for col in feature_columns]
-        X_df = np.array(X_input).reshape(1, -1)
+        X_np = np.array(X_input, dtype=object).reshape(1, -1)
 
-        # Encode categorical variables
-        for col in ['gender', 'occupation']:
-            val = data[col]
+        # Encode categorical features
+        for col in categorical_cols:
+            idx = feature_columns.index(col)
             encoder = label_encoders[col]
-            if val not in encoder.classes_:
-                return jsonify({"error": f"Invalid value for {col}: '{val}'. Allowed: {encoder.classes_.tolist()}"}), 400
-            X_df[0, feature_columns.index(col)] = encoder.transform([val])[0]
+            X_np[0, idx] = encoder.transform([X_np[0, idx]])[0]
 
         # Convert all to float
-        X_df = X_df.astype(float)
+        X_np = X_np.astype(float)
 
         # Scale for NN
-        X_scaled = scaler.transform(X_df)
+        X_scaled = scaler.transform(X_np)
 
-        # Predict approval probability
+        # Predict approval
         nn_prob = nn_classifier.predict(X_scaled)[0][0]
-        rf_prob = rf_classifier.predict_proba(X_df)[0][1]
+        rf_prob = rf_classifier.predict_proba(X_np)[0][1]
         final_prob = (nn_prob + rf_prob) / 2
         approved = int(final_prob > 0.5)
 
         if approved:
             nn_limit = nn_regressor.predict(X_scaled)[0][0]
-            rf_limit = rf_regressor.predict(X_df)[0]
+            rf_limit = rf_regressor.predict(X_np)[0]
             final_limit = (nn_limit + rf_limit) / 2
 
+            # Suggest tiers
             safe = round(final_limit * 0.6, -2)
             optimal = round(final_limit * 0.8, -2)
             stretched = round(final_limit * 1.0, -2)
