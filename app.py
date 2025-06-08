@@ -7,9 +7,8 @@ import os
 
 app = Flask(__name__)
 
-# === Load models and objects ===
+# === Load models ===
 model_dir = "models"
-
 scaler = joblib.load(os.path.join(model_dir, "scaler.joblib"))
 label_encoders = joblib.load(os.path.join(model_dir, "label_encoders.joblib"))
 
@@ -19,75 +18,60 @@ rf_regressor = joblib.load(os.path.join(model_dir, "rf_regressor.joblib"))
 nn_classifier = load_model(os.path.join(model_dir, "nn_classifier.h5"))
 nn_regressor = load_model(os.path.join(model_dir, "nn_regressor.h5"))
 
-# === Feature and categorical column order ===
-feature_columns = [
+# === Final features used ===
+features = [
     'age',
     'gender',
     'income',
     'occupation',
     'existing_loans',
-    'credit_score',
-    'marital_status',
-    'education',
-    'dependents',
-    'residence_type',
-    'employment_type',
-    'annual_expenses',
-    'monthly_debt',
-    'years_at_current_job'
+    'credit_score'
 ]
 
-categorical_columns = [
-    'gender',
-    'occupation',
-    'marital_status',
-    'education',
-    'residence_type',
-    'employment_type'
-]
+categorical_columns = ['gender', 'occupation']
 
 @app.route('/')
 def home():
-    return "✅ Credit Card Approval API is running."
+    return "✅ Credit Card Approval API is running with 6 features."
 
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
         data = request.json
 
-        # Validate input
-        missing = [col for col in feature_columns if col not in data]
+        # Check for missing fields
+        missing = [col for col in features if col not in data]
         if missing:
             return jsonify({"error": f"Missing fields: {missing}"}), 400
 
-        # Extract features
-        X_input = [data[col] for col in feature_columns]
+        # Format input data
+        X_input = [data[col] for col in features]
         X_df = np.array(X_input, dtype=object).reshape(1, -1)
 
-        # Apply label encoders to categorical fields
+        # Apply label encoding for categorical fields
         for col in categorical_columns:
             encoder = label_encoders[col]
             value = data[col]
             try:
                 encoded_val = encoder.transform([value])[0]
-                X_df[0, feature_columns.index(col)] = encoded_val
+                X_df[0, features.index(col)] = encoded_val
             except Exception:
                 return jsonify({"error": f"Invalid value for '{col}': '{value}'"}), 400
 
-        # Convert all values to float
+        # Convert all fields to float
         X_df = X_df.astype(float)
 
-        # Scale inputs for neural networks
+        # Scale input
         X_scaled = scaler.transform(X_df)
 
-        # Predict approval probability
+        # Classification predictions
         nn_prob = nn_classifier.predict(X_scaled)[0][0]
         rf_prob = rf_classifier.predict_proba(X_df)[0][1]
         final_prob = (nn_prob + rf_prob) / 2
         approved = int(final_prob > 0.5)
 
+        # If approved, predict credit limit
         if approved:
-            # Predict credit limit
             nn_limit = nn_regressor.predict(X_scaled)[0][0]
             rf_limit = rf_regressor.predict(X_df)[0]
             final_limit = (nn_limit + rf_limit) / 2
