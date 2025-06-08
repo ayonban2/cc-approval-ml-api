@@ -20,7 +20,7 @@ nn_classifier = load_model(os.path.join(model_dir, "nn_classifier.h5"))
 nn_regressor = load_model(os.path.join(model_dir, "nn_regressor.h5"))
 
 # === Feature order ===
-feature_columns = ['age', 'gender', 'income', 'occupation', 'existing_loans', 'credit_score']
+feature_columns = ['age', 'gender', 'income', 'existing_loans', 'credit_score']
 
 @app.route('/')
 def home():
